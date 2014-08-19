@@ -2,10 +2,9 @@
 
 from scapy.all import *
 import yaml
-import signal
 import time
 import logging
-import sys
+import os
 
 class rtadvd:
 	def __init__(self):
@@ -16,16 +15,15 @@ class rtadvd:
 		self.router = {}
 		self.prefixes = {}
 		self.timers = {}
+		self.prefixesMtime = 0
 		self.keepRunning = True
 		self.routerFound = False
 
 		logging.basicConfig(filename=self.config['logfile'], level=logging.DEBUG, format='%(asctime)s %(levelname)-8s %(message)s', datefmt='%Y-%m-%d %I:%M:%S')
 		logging.info('starting rtadv')
 
-		self.importconf('config.yaml')
-		self.importprefixes()
-		# NOTE: sighandler broken when in select-loop
-		signal.signal(signal.SIGUSR1, self.sighandler)
+		self.importConf('config.yaml')
+		self.updatePrefixes()
 
 	def run(self):
 		logging.info('starting sniffing')
@@ -58,6 +56,9 @@ class rtadvd:
 				self.router['srcmac'] = packet[IPv6][ICMPv6ND_RA].lladdr
 				self.routerFound = True
 				logging.info('found RA from %s for %s, proceeding' % (self.router['srcll'], self.router['srcmac']))
+
+		# update prefixes list
+		self.updatePrefixes()
 
 		# asynchronously 'schedule' next round of sending directed RA's
 		if self.routerFound is True:
@@ -97,20 +98,20 @@ class rtadvd:
 			logging.debug('sent successful, resetting timer for %s' % lladdr)
 			self.timers[lladdr] = time.time()
 
-	def importconf(self, configfile):
+	def importConf(self, configfile):
 		file = open(configfile, 'r')
 		self.config = dict(self.config.items() + yaml.load(file).items())
 		logging.debug('loaded config from %s' % configfile)
 
-	def importprefixes(self):
-		file = open(self.config['prefixfile'], 'r')
-		self.prefixes = yaml.load(file)
-		logging.info('%d prefixes loaded from %s' % (len(self.prefixes), self.config['prefixfile']))
-
-	def sighandler(self, sig, *args):
-		if sig is 10:
-			logging.debug('SIGUSR1 received, reloading prefixes')
-			self.importprefixes()
+	def updatePrefixes(self):
+		mtime = os.path.getmtime(self.config['prefixfile'])
+		if mtime > self.prefixesMtime:
+			if self.prefixesMtime != 0:
+				logging.info('prefixes file %s updated, reloading' % self.config['prefixfile'])
+			self.prefixesMtime = mtime
+			file = open(self.config['prefixfile'], 'r')
+			self.prefixes = yaml.load(file)
+			logging.info('%d prefixes loaded from %s' % (len(self.prefixes), self.config['prefixfile']))
 
 if __name__ == '__main__':
 	r = rtadvd()
