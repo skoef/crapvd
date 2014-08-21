@@ -5,24 +5,19 @@ import yaml
 import time
 import logging
 import os
+import getopt
 
-class rtadvd:
-	def __init__(self):
-		self.config = {
-			'interval': 30,
-			'logfile': '/var/log/rtadv.log',
-		}
-		self.router = {}
+class CRApvD:
+	def __init__(self, config):
+		self.config = config
 		self.prefixes = {}
 		self.timers = {}
 		self.prefixesMtime = 0
 		self.keepRunning = True
-		self.routerFound = False
 
 		logging.basicConfig(filename=self.config['logfile'], level=logging.DEBUG, format='%(asctime)s %(levelname)-8s %(message)s', datefmt='%Y-%m-%d %I:%M:%S')
-		logging.info('starting rtadv')
+		logging.info('starting crapvd')
 
-		self.importConf('config.yaml')
 		self.updatePrefixes()
 
 	def run(self):
@@ -36,33 +31,16 @@ class rtadvd:
 	def sniffHandler(self, packet):
 		# router sollicitation
 		if ICMPv6ND_RS in packet:
-			# do not reply to RS when we haven't found the router
-			if self.routerFound is False:
-				logging.debug('ignoring RS from %s since we have no route ourselves' % packet[IPv6].src)
-			else:
-				logging.info('received RS from %s', packet[IPv6].src)
-				# drop timeout for address to below timeout
-				self.timers[packet[IPv6].src] = time.time() - (self.config['interval'] + 1)
-				logging.debug('dropped timeout to %d for %s' % (self.timers[packet[IPv6].src], packet[IPv6].src))
-
-		# router advertisment
-		if ICMPv6ND_RA in packet:
-			# do not listen to RA when we found the router
-			if self.routerFound is True:
-				#logging.debug('ignoring RA from %s since we already know the route' % packet[IPv6].src)
-				pass
-			else:
-				self.router['srcll'] = packet[IPv6].src
-				self.router['srcmac'] = packet[IPv6][ICMPv6ND_RA].lladdr
-				self.routerFound = True
-				logging.info('found RA from %s for %s, proceeding' % (self.router['srcll'], self.router['srcmac']))
+			logging.info('received RS from %s', packet[IPv6].src)
+			# drop timeout for address to below timeout
+			self.timers[packet[IPv6].src] = time.time() - (self.config['interval'] + 1)
+			logging.debug('dropped timeout to %d for %s' % (self.timers[packet[IPv6].src], packet[IPv6].src))
 
 		# update prefixes list
 		self.updatePrefixes()
 
 		# asynchronously 'schedule' next round of sending directed RA's
-		if self.routerFound is True:
-			self.checkToSend()
+		self.checkToSend()
 
 	def checkToSend(self):
 		timeout = (time.time() - self.config['interval'])
@@ -74,21 +52,19 @@ class rtadvd:
 			elif self.timers[data['lladdr']] < timeout:
 				logging.debug('timeout for %s: %d < %d, sending' % (data['lladdr'], self.timers[data['lladdr']], timeout))
 				self.sendRA(data['lladdr'], data['prefix'])
-			##else:
-			##	logging.debug('no timeout for %s: %d >= %d , delaying' % (data['lladdr'], self.timers[data['lladdr']], timeout))
 
 	def sendRA(self, lladdr, prefix):
 		logging.info('sending prefix %s to address %s' % (prefix, lladdr))
 		# IPv6 packet
 		ip6 = IPv6()
 		# forge ip6 source address
-		ip6.src = self.router['srcll']
+		ip6.src = self.config['srcll']
 		ip6.dst = lladdr
 		# make packet an RA
 		ra = ICMPv6ND_RA()
 		# forge source mac address
 		src = ICMPv6NDOptSrcLLAddr()
-		src.lladdr = self.router['srcmac']
+		src.lladdr = self.config['srcmac']
 		# set right prefix data
 		preinf = ICMPv6NDOptPrefixInfo()
 		preinf.prefix = prefix.split('/')[0]
@@ -97,11 +73,6 @@ class rtadvd:
 		if send(ip6/ra/src/preinf) is None:
 			logging.debug('sent successful, resetting timer for %s' % lladdr)
 			self.timers[lladdr] = time.time()
-
-	def importConf(self, configfile):
-		file = open(configfile, 'r')
-		self.config = dict(self.config.items() + yaml.load(file).items())
-		logging.debug('loaded config from %s' % configfile)
 
 	def updatePrefixes(self):
 		mtime = os.path.getmtime(self.config['prefixfile'])
@@ -113,6 +84,45 @@ class rtadvd:
 			self.prefixes = yaml.load(file)
 			logging.info('%d prefixes loaded from %s' % (len(self.prefixes), self.config['prefixfile']))
 
+def usage():
+	print """Usage: %s -s srcll -m srcmac [-i interval] [-c prefixesfile] [-l logfile]
+	""" % os.path.basename(sys.argv[0])
+
 if __name__ == '__main__':
-	r = rtadvd()
-	r.run()
+	# defaults
+	config = {
+		'interval': 60,
+		'logfile': '/var/log/crapvd.log',
+		'prefixfile': '/etc/prefixes.yaml',
+	}
+
+	# parse options
+	try:
+		opts, args = getopt.getopt(sys.argv[1:], 's:m:i:c:l:', [])
+	except getopt.GetoptError as err:
+		print str(err)
+		sys.exit(2)
+
+	for o, a in opts:
+		if o == '-s':
+			config['srcll'] = a
+		elif o == '-m':
+			config['srcmac'] = a
+		elif o == '-i':
+			config['interval'] = int(a)
+		elif o == '-c':
+			config['prefixfile'] = a
+		elif o == '-l':
+			config['logfile'] = a
+		else:
+			print "Error: unknown option %s" % o
+			usage()
+			sys.exit(2)
+
+	if 'srcmac' not in config or 'srcll' not in config:
+		print "Error: -s and -m are required"
+		usage()
+		sys.exit(2)
+
+	c = CRApvD(config)
+	c.run()
