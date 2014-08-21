@@ -84,8 +84,49 @@ class CRApvD:
 			self.prefixes = yaml.load(file)
 			logging.info('%d prefixes loaded from %s' % (len(self.prefixes), self.config['prefixfile']))
 
+def daemonize (stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
+	# Do first fork.
+	try:
+		pid = os.fork()
+		if pid > 0:
+			sys.exit(0)   # Exit first parent.
+	except OSError, e:
+		sys.stderr.write("fork #1 failed: (%d) %s\n" % (e.errno, e.strerror))
+		sys.exit(1)
+
+	# Decouple from parent environment.
+	os.chdir("/")
+	os.umask(0)
+	os.setsid()
+
+	# Do second fork.
+	try:
+		pid = os.fork()
+		if pid > 0:
+			try:
+				# write pid file
+				f = open('/var/run/crapvd.pid', 'w')
+				f.write(str(pid))
+				f.close()
+			except IOError, e:
+				sys.stderr.write("could not write pid to file: (%d) %s\n" % (e.errno, e.strerror))
+				sys.exit(1)   # Exit second parent.
+			sys.exit(0)   # Exit second parent.
+	except OSError, e:
+		sys.stderr.write("fork #2 failed: (%d) %s\n" % (e.errno, e.strerror))
+		sys.exit(1)
+
+	# daemonizing succeeded
+	# Redirect standard file descriptors.
+	si = open(stdin, 'r')
+	so = open(stdout, 'a+')
+	se = open(stderr, 'a+', 0)
+	os.dup2(si.fileno(), sys.stdin.fileno())
+	os.dup2(so.fileno(), sys.stdout.fileno())
+	os.dup2(se.fileno(), sys.stderr.fileno())
+
 def usage():
-	print """Usage: %s -s srcll -m srcmac [-i interval] [-c prefixesfile] [-l logfile]
+	print """Usage: %s -s srcll -m srcmac [-i interval] [-c prefixesfile] [-l logfile] [-f]
 	""" % os.path.basename(sys.argv[0])
 
 if __name__ == '__main__':
@@ -95,10 +136,11 @@ if __name__ == '__main__':
 		'logfile': '/var/log/crapvd.log',
 		'prefixfile': '/etc/prefixes.yaml',
 	}
+	foreground = False
 
 	# parse options
 	try:
-		opts, args = getopt.getopt(sys.argv[1:], 's:m:i:c:l:', [])
+		opts, args = getopt.getopt(sys.argv[1:], 's:m:i:c:l:f', [])
 	except getopt.GetoptError as err:
 		print str(err)
 		sys.exit(2)
@@ -114,6 +156,8 @@ if __name__ == '__main__':
 			config['prefixfile'] = a
 		elif o == '-l':
 			config['logfile'] = a
+		elif o == '-f':
+			foreground = True
 		else:
 			print "Error: unknown option %s" % o
 			usage()
@@ -124,5 +168,10 @@ if __name__ == '__main__':
 		usage()
 		sys.exit(2)
 
+	# detach from foreground
+	if foreground is False:
+		daemonize()
+
+	# start daemon
 	c = CRApvD(config)
 	c.run()
