@@ -26,3 +26,6 @@ we can start ```carpvd``` with link-local address and MAC address from the route
 ```
 $ carpvd -m 00:01:02:03:05:05 -s fe80:f000:1 -c /path/to/prefixes.yaml
 ```
+
+## Dependencies
+```crapvd``` depends on [scapy](http://www.secdev.org/projects/scapy/ "Scapy") and [pyyaml](http://pyyaml.org/ "PyYAML")
