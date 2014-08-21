@@ -134,7 +134,15 @@ def daemonize (stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
 	os.dup2(se.fileno(), sys.stderr.fileno())
 
 def usage():
-	print """Usage: %s -s srcll -m srcmac [-i interval] [-c prefixesfile] [-l logfile] [-f]
+	print """Usage: %s -s srcll -m srcmac [-i interval] [-c prefixesfile] [-l logfile] [-f] [-h]
+
+	-s ip6address  : link-local address for real gateway          [required]
+	-m macaddress  : mac-address of link-local address            [required]
+	-i seconds     : approximate interval advertisements are sent [default=60]
+	-c file        : YAML file containing prefixes                [default=/etc/prefixes.yaml]
+	-l file        : log file                                     [default=/var/log/crapvd.log]
+	-f             : don't detach from foreground
+	-h             : show this help message
 	""" % os.path.basename(sys.argv[0])
 
 if __name__ == '__main__':
@@ -148,7 +156,7 @@ if __name__ == '__main__':
 
 	# parse options
 	try:
-		opts, args = getopt.getopt(sys.argv[1:], 's:m:i:c:l:f', [])
+		opts, args = getopt.getopt(sys.argv[1:], 's:m:i:c:l:fh', [])
 	except getopt.GetoptError as err:
 		print str(err)
 		sys.exit(2)
@@ -166,6 +174,9 @@ if __name__ == '__main__':
 			config['logfile'] = a
 		elif o == '-f':
 			foreground = True
+		elif o == '-h':
+			usage()
+			sys.exit(0)
 		else:
 			print "Error: unknown option %s" % o
 			usage()
