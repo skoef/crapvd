@@ -11,6 +11,18 @@ we came up with:
 
 - generate lists of link-local address and prefix combinations per customer
 - listen for router solicitments from any of these link-local addresses
-- reply with a matching router advertisments, forging the given link-local address and mac
+- reply with a matching router advertisments, forging the given link-local address and MAC
 address of the router itself
 - send periodic router advertisements anyhow, with or without router solicitments
+
+## Usage
+Given the following YAML based config file:
+```YAML
+customer1:
+  lladdr: 'fe80::5054:ff:fe00:f000'
+  prefix: '2a01:f000:f000:f000::/64'
+```
+we can start ```carpvd``` with link-local address and MAC address from the router:
+```
+$ carpvd -m 00:01:02:03:05:05 -s fe80:f000:1 -c /path/to/prefixes.yaml
+```
