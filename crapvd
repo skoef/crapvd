@@ -75,14 +75,22 @@ class CRApvD:
 			self.timers[lladdr] = time.time()
 
 	def updatePrefixes(self):
-		mtime = os.path.getmtime(self.config['prefixfile'])
-		if mtime > self.prefixesMtime:
-			if self.prefixesMtime != 0:
-				logging.info('prefixes file %s updated, reloading' % self.config['prefixfile'])
-			self.prefixesMtime = mtime
-			file = open(self.config['prefixfile'], 'r')
-			self.prefixes = yaml.load(file)
-			logging.info('%d prefixes loaded from %s' % (len(self.prefixes), self.config['prefixfile']))
+		try:
+			mtime = os.path.getmtime(self.config['prefixfile'])
+			if mtime > self.prefixesMtime:
+				if self.prefixesMtime != 0:
+					logging.info('prefixes file %s updated, reloading' % self.config['prefixfile'])
+				self.prefixesMtime = mtime
+				file = open(self.config['prefixfile'], 'r')
+				prefixes = yaml.load(file)
+				if prefixes:
+					self.prefixes = prefixes
+					logging.info('%d prefixes loaded from %s' % (len(self.prefixes), self.config['prefixfile']))
+				else:
+					logging.warning('no prefixes could be found in %s' % self.config['prefixfile'])
+		except OSError, e:
+			logging.error('prefixes file %s not found' % self.config['prefixfile'])
+			self.keepRunning = False
 
 def daemonize (stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
 	# Do first fork.
