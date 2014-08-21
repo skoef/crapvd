@@ -22,7 +22,7 @@ class CRApvD:
 
 	def run(self):
 		logging.info('starting sniffing')
-		sniff('icmp6', prn=self.sniffHandler, stop_filter=self.keepSniffing)
+		sniff('icmp6', prn=self.sniffHandler, stop_filter=self.keepSniffing, store=0)
 		logging.info('stopped sniffing')
 
 	def keepSniffing(self, x):
