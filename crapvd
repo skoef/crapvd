@@ -16,15 +16,24 @@ class CRApvD:
 		self.routerFound = False
 		self.keepRunning = True
 
-		logging.basicConfig(filename=self.config['logfile'], level=logging.DEBUG, format='%(asctime)s %(levelname)-8s %(message)s', datefmt='%Y-%m-%d %I:%M:%S')
-		logging.info('starting crapvd')
+		# set up logging
+		self.logger = logging.getLogger('crapvd')
+		self.logger.setLevel(logging.DEBUG)
+		formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s')
+		if self.config['foreground'] is True:
+			handler = logging.StreamHandler()
+		else:
+			handler = logging.FileHandler(self.config['logfile'])
+		handler.setFormatter(formatter)
+		self.logger.addHandler(handler)
 
+		self.logger.info('starting crapvd')
 		self.updatePrefixes()
 
 	def run(self):
-		logging.info('starting sniffing')
+		self.logger.info('starting sniffing')
 		sniff('icmp6', prn=self.sniffHandler, stop_filter=self.keepSniffing, store=0)
-		logging.info('stopped sniffing')
+		self.logger.info('stopped sniffing')
 
 	def keepSniffing(self, x):
 		return not self.keepRunning
@@ -32,15 +41,15 @@ class CRApvD:
 	def sniffHandler(self, packet):
 		# router sollicitation
 		if ICMPv6ND_RS in packet:
-			logging.info('received RS from %s', packet[IPv6].src)
+			self.logger.info('received RS from %s', packet[IPv6].src)
 			# when running in automatic mode, wait for router config being detected
 			# prior to responding to router solicitments
 			if self.config['automatic'] is True and self.routerFound is False:
-				logging.debug('ignoring RS from %s, running in automatic mode and no RA has been received yet' % packet[IPv6].src)
+				self.logger.debug('ignoring RS from %s, running in automatic mode and no RA has been received yet' % packet[IPv6].src)
 			else:
 				# drop timeout for address to below timeout
 				self.timers[packet[IPv6].src] = time.time() - (self.config['interval'] + 1)
-				logging.debug('dropped timeout to %d for %s' % (self.timers[packet[IPv6].src], packet[IPv6].src))
+				self.logger.debug('dropped timeout to %d for %s' % (self.timers[packet[IPv6].src], packet[IPv6].src))
 
 		# when running in automatic mode, copy data found in first router advertisement
 		# and start replying to received router solicitments from now on
@@ -48,7 +57,7 @@ class CRApvD:
 			self.routerFound = True
 			self.config['srcll'] = packet[IPv6].src
 			self.config['srcmac'] = packet[IPv6][ICMPv6ND_RA].lladdr
-			logging.info('found RA from %s for %s, from now replying on RS' % (self.config['srcmac'], self.config['srcll']))
+			self.logger.info('found RA from %s for %s, from now replying on RS' % (self.config['srcmac'], self.config['srcll']))
 
 		# update prefixes list
 		self.updatePrefixes()
@@ -62,13 +71,13 @@ class CRApvD:
 			data = self.prefixes[customer]
 			if data['lladdr'] not in self.timers:
 				self.timers[data['lladdr']] = time.time()
-				logging.debug('%s not found in timers, resetting' % data['lladdr'])
+				self.logger.debug('%s not found in timers, resetting' % data['lladdr'])
 			elif self.timers[data['lladdr']] < timeout:
-				logging.debug('timeout for %s: %d < %d, sending' % (data['lladdr'], self.timers[data['lladdr']], timeout))
+				self.logger.debug('timeout for %s: %d < %d, sending' % (data['lladdr'], self.timers[data['lladdr']], timeout))
 				self.sendRA(data['lladdr'], data['prefix'])
 
 	def sendRA(self, lladdr, prefix):
-		logging.info('sending prefix %s to address %s' % (prefix, lladdr))
+		self.logger.info('sending prefix %s to address %s' % (prefix, lladdr))
 		# IPv6 packet
 		ip6 = IPv6()
 		# forge ip6 source address
@@ -85,7 +94,7 @@ class CRApvD:
 		preinf.prefixlen = int(prefix.split('/')[1])
 		# glue parts together and send it
 		if send(ip6/ra/src/preinf) is None:
-			logging.debug('sent successful, resetting timer for %s' % lladdr)
+			self.logger.debug('sent successful, resetting timer for %s' % lladdr)
 			self.timers[lladdr] = time.time()
 
 	def updatePrefixes(self):
@@ -93,17 +102,17 @@ class CRApvD:
 			mtime = os.path.getmtime(self.config['prefixfile'])
 			if mtime > self.prefixesMtime:
 				if self.prefixesMtime != 0:
-					logging.info('prefixes file %s updated, reloading' % self.config['prefixfile'])
+					self.logger.info('prefixes file %s updated, reloading' % self.config['prefixfile'])
 				self.prefixesMtime = mtime
 				file = open(self.config['prefixfile'], 'r')
 				prefixes = yaml.load(file)
 				if prefixes:
 					self.prefixes = prefixes
-					logging.info('%d prefixes loaded from %s' % (len(self.prefixes), self.config['prefixfile']))
+					self.logger.info('%d prefixes loaded from %s' % (len(self.prefixes), self.config['prefixfile']))
 				else:
-					logging.warning('no prefixes could be found in %s' % self.config['prefixfile'])
+					self.logger.warning('no prefixes could be found in %s' % self.config['prefixfile'])
 		except OSError, e:
-			logging.error('prefixes file %s not found' % self.config['prefixfile'])
+			self.logger.error('prefixes file %s not found' % self.config['prefixfile'])
 			self.keepRunning = False
 
 def daemonize (stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
@@ -167,9 +176,9 @@ if __name__ == '__main__':
 		'interval': 60,
 		'logfile': '/var/log/crapvd.log',
 		'prefixfile': '/etc/prefixes.yaml',
-		'automatic': False
+		'automatic': False,
+		'foreground': False
 	}
-	foreground = False
 
 	# parse options
 	try:
@@ -190,7 +199,7 @@ if __name__ == '__main__':
 		elif o == '-l':
 			config['logfile'] = a
 		elif o == '-f':
-			foreground = True
+			config['foreground'] = True
 		elif o == '-h':
 			usage()
 			sys.exit(0)
@@ -208,7 +217,7 @@ if __name__ == '__main__':
 		sys.exit(2)
 
 	# detach from foreground
-	if foreground is False:
+	if config['foreground'] is False:
 		daemonize()
 
 	# start daemon
