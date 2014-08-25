@@ -75,43 +75,54 @@ class CRApvD:
 				self.logger.debug('%s not found in timers, resetting' % data['lladdr'])
 			elif self.timers[data['lladdr']] < timeout:
 				self.logger.debug('timeout for %s: %d < %d, sending' % (data['lladdr'], self.timers[data['lladdr']], timeout))
-				self.sendRA(data['lladdr'], data['prefix'])
+				self.sendRA(data['macaddr'], data['lladdr'], data['prefix'])
 
-	def sendRA(self, lladdr, prefix):
-		self.logger.info('sending prefix %s to address %s' % (prefix, lladdr))
+	def sendRA(self, macaddr, lladdr, prefix):
+		self.logger.info('sending prefix %s to address %s (%s)' % (prefix, lladdr, macaddr))
+		# ethernet frame
+		ether = Ether(src=self.config['srcmac'], dst=macaddr)
 		# IPv6 packet
-		ip6 = IPv6()
-		# forge ip6 source address
-		ip6.src = self.config['srcll']
-		ip6.dst = lladdr
+		# in which we forge the source link local address
+		ip6 = IPv6(src=self.config['srcll'], dst=lladdr)
 		# make packet an RA
 		ra = ICMPv6ND_RA()
 		# forge source mac address
-		src = ICMPv6NDOptSrcLLAddr()
-		src.lladdr = self.config['srcmac']
+		src = ICMPv6NDOptSrcLLAddr(lladdr=self.config['srcmac'])
 		# set right prefix data
 		preinf = ICMPv6NDOptPrefixInfo()
 		preinf.prefix = prefix.split('/')[0]
 		preinf.prefixlen = int(prefix.split('/')[1])
-		# glue parts together and send it
-		if send(ip6/ra/src/preinf) is None:
-			self.logger.debug('sent successful, resetting timer for %s' % lladdr)
-			self.timers[lladdr] = time.time()
+		try:
+			# glue parts together and send it
+			if sendp(ether/ip6/ra/src/preinf, iface=self.config['interface']) is None:
+				self.logger.debug('sent successful, resetting timer for %s' % lladdr)
+				self.timers[lladdr] = time.time()
+		except socket.error, e:
+			self.logger.error('error sending RA: %s' % str(e))
+			self.keepRunning = False
 
 	def updatePrefixes(self):
 		try:
+			# only update when prefix file was modified
 			mtime = os.path.getmtime(self.config['prefixfile'])
-			if mtime > self.prefixesMtime:
-				if self.prefixesMtime != 0:
-					self.logger.info('prefixes file %s updated, reloading' % self.config['prefixfile'])
-				self.prefixesMtime = mtime
-				file = open(self.config['prefixfile'], 'r')
-				prefixes = yaml.load(file)
-				if prefixes:
-					self.prefixes = prefixes
-					self.logger.info('%d prefixes loaded from %s' % (len(self.prefixes), self.config['prefixfile']))
-				else:
-					self.logger.warning('no prefixes could be found in %s' % self.config['prefixfile'])
+			if mtime <= self.prefixesMtime:
+				return
+
+			# don't log the first time
+			if self.prefixesMtime != 0:
+				self.logger.info('prefixes file %s updated, reloading' % self.config['prefixfile'])
+
+			self.prefixesMtime = mtime
+			# read YAML
+			file = open(self.config['prefixfile'], 'r')
+			prefixes = yaml.load(file)
+			if not prefixes:
+				self.logger.warning('no prefixes could be found in %s' % self.config['prefixfile'])
+				return
+
+			# copy new data
+			self.prefixes = prefixes
+			self.logger.info('%d prefixes loaded from %s' % (len(self.prefixes), self.config['prefixfile']))
 		except OSError, e:
 			self.logger.error('prefixes file %s not found' % self.config['prefixfile'])
 			self.keepRunning = False
@@ -185,17 +196,19 @@ if __name__ == '__main__':
 
 	# parse options
 	try:
-		opts, args = getopt.getopt(sys.argv[1:], 's:m:i:c:l:fdah', [])
+		opts, args = getopt.getopt(sys.argv[1:], 'i:s:m:t:c:l:fdah', [])
 	except getopt.GetoptError, e:
 		print str(e)
 		sys.exit(2)
 
 	for o, a in opts:
-		if o == '-s':
+		if o == '-i':
+			config['interface'] = a
+		elif o == '-s':
 			config['srcll'] = a
 		elif o == '-m':
 			config['srcmac'] = a
-		elif o == '-i':
+		elif o == '-t':
 			config['interval'] = int(a)
 		elif o == '-c':
 			config['prefixfile'] = a
@@ -205,17 +218,22 @@ if __name__ == '__main__':
 			config['foreground'] = True
 		elif o == '-d':
 			config['debugging'] = True
+		elif o == '-a':
+			config['automatic'] = True
 		elif o == '-h':
 			usage()
 			sys.exit(0)
-		elif o == '-a':
-			config['automatic'] = True
 		else:
 			print "Error: unknown option %s" % o
 			usage()
 			sys.exit(2)
 
 	# check for required parameters
+	if 'interface' not in config:
+		print "Error: -i is required"
+		usage()
+		sys.exit(2)
+
 	if ('srcmac' not in config or 'srcll' not in config) and config['automatic'] is False:
 		print "Error: either -a or -s and -m are required"
 		usage()

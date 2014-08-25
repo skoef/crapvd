@@ -9,7 +9,7 @@ the router has a /48 gateway address. We know this is not how it should be imple
 but resist to the fact of configuring gateways or next-hops for each /64. So this is where 
 we came up with:
 
-- generate lists of link-local address and prefix combinations per customer
+- generate lists of mac address, link-local address and prefix combinations per customer
 - listen for router solicitments from any of these link-local addresses
 - reply with a matching router advertisments, forging the given link-local address and MAC
 address of the router itself
@@ -19,6 +19,7 @@ address of the router itself
 Given the following YAML based config file:
 ```YAML
 customer1:
+  macaddr: '01:23:45:67:89:ab'
   lladdr: 'fe80::5054:ff:fe00:f000'
   prefix: '2a01:f000:f000:f000::/64'
 ```
