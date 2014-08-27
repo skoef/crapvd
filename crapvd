@@ -42,15 +42,16 @@ class CRApvD:
 	def sniffHandler(self, packet):
 		# router sollicitation
 		if ICMPv6ND_RS in packet:
-			self.logger.info('received RS from %s', packet[IPv6].src)
+			rs_src = packet[IPv6][ICMPv6ND_RS].lladdr
+			self.logger.info('received RS from %s', rs_src)
 			# when running in automatic mode, wait for router config being detected
 			# prior to responding to router solicitments
 			if self.config['automatic'] is True and self.routerFound is False:
-				self.logger.debug('ignoring RS from %s, running in automatic mode and no RA has been received yet' % packet[IPv6].src)
+				self.logger.debug('ignoring RS from %s, running in automatic mode and no RA has been received yet' % rs_src)
 			else:
 				# drop timeout for address to below timeout
-				self.timers[packet[IPv6].src] = time.time() - (self.config['interval'] + 1)
-				self.logger.debug('dropped timeout to %d for %s' % (self.timers[packet[IPv6].src], packet[IPv6].src))
+				self.timers[rs_src] = time.time() - (self.config['interval'] + 1)
+				self.logger.debug('dropped timeout to %d for %s' % (self.timers[rs_src], rs_src))
 
 		# when running in automatic mode, copy data found in first router advertisement
 		# and start replying to received router solicitments from now on
@@ -70,20 +71,20 @@ class CRApvD:
 		timeout = (time.time() - self.config['interval'])
 		for customer in self.prefixes:
 			data = self.prefixes[customer]
-			if data['lladdr'] not in self.timers:
-				self.timers[data['lladdr']] = time.time()
-				self.logger.debug('%s not found in timers, resetting' % data['lladdr'])
-			elif self.timers[data['lladdr']] < timeout:
-				self.logger.debug('timeout for %s: %d < %d, sending' % (data['lladdr'], self.timers[data['lladdr']], timeout))
-				self.sendRA(data['macaddr'], data['lladdr'], data['prefix'])
+			if data['macaddr'] not in self.timers:
+				self.timers[data['macaddr']] = time.time()
+				self.logger.debug('%s not found in timers, resetting' % data['macaddr'])
+			elif self.timers[data['macaddr']] < timeout:
+				self.logger.debug('timeout for %s: %d < %d, sending' % (data['macaddr'], self.timers[data['macaddr']], timeout))
+				self.sendRA(data['macaddr'], data['prefix'])
 
-	def sendRA(self, macaddr, lladdr, prefix):
-		self.logger.info('sending prefix %s to address %s (%s)' % (prefix, lladdr, macaddr))
+	def sendRA(self, macaddr, prefix):
+		self.logger.info('sending prefix %s to address %s' % (prefix, macaddr))
 		# ethernet frame
 		ether = Ether(src=self.config['srcmac'], dst=macaddr)
 		# IPv6 packet
 		# in which we forge the source link local address
-		ip6 = IPv6(src=self.config['srcll'], dst=lladdr)
+		ip6 = IPv6(src=self.config['srcll'], dst=self.getLinkLocal(macaddr))
 		# make packet an RA
 		ra = ICMPv6ND_RA()
 		# forge source mac address
@@ -95,11 +96,23 @@ class CRApvD:
 		try:
 			# glue parts together and send it
 			if sendp(ether/ip6/ra/src/preinf, iface=self.config['interface']) is None:
-				self.logger.debug('sent successful, resetting timer for %s' % lladdr)
-				self.timers[lladdr] = time.time()
+				self.logger.debug('sent successful, resetting timer for %s' % macaddr)
+				self.timers[macaddr] = time.time()
 		except socket.error, e:
 			self.logger.error('error sending RA: %s' % str(e))
 			self.keepRunning = False
+
+	def getLinkLocal(self, mac):
+		# add ff:fe in the middle
+		mac = mac.split(':')[:3] + ['ff', 'fe'] + mac.split(':')[3:]
+		# convert to decimal
+		hmac = map(lambda x: int(x, 16), mac)
+		# flip 2 right bit of first octet
+		hmac[0] = hmac[0] ^ 2
+		# flip back to hex and glue back together
+		hmac = map(lambda x: '%0.2x' % x, hmac)
+		hmac = map(lambda x: re.sub(r'^0+', '', hmac[x] + hmac[x+1]), [0, 2, 4, 6])
+		return 'fe80::' + ':'.join(hmac)
 
 	def updatePrefixes(self):
 		try:
