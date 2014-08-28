@@ -84,13 +84,13 @@ class CRApvD:
 		ether = Ether(src=self.config['srcmac'], dst=macaddr)
 		# IPv6 packet
 		# in which we forge the source link local address
-		ip6 = IPv6(src=self.config['srcll'], dst=self.getLinkLocal(macaddr))
+		ip6 = IPv6(src=self.config['srcll'])
 		# make packet an RA
-		ra = ICMPv6ND_RA()
+		ra = ICMPv6ND_RA(chlim=64, routerlifetime=(self.config['interval'] * 3), prf=0)
 		# forge source mac address
 		src = ICMPv6NDOptSrcLLAddr(lladdr=self.config['srcmac'])
 		# set right prefix data
-		preinf = ICMPv6NDOptPrefixInfo()
+		preinf = ICMPv6NDOptPrefixInfo(validlifetime=2592000, preferredlifetime=604800)
 		preinf.prefix = prefix.split('/')[0]
 		preinf.prefixlen = int(prefix.split('/')[1])
 		try:
@@ -101,18 +101,6 @@ class CRApvD:
 		except socket.error, e:
 			self.logger.error('error sending RA: %s' % str(e))
 			self.keepRunning = False
-
-	def getLinkLocal(self, mac):
-		# add ff:fe in the middle
-		mac = mac.split(':')[:3] + ['ff', 'fe'] + mac.split(':')[3:]
-		# convert to decimal
-		hmac = map(lambda x: int(x, 16), mac)
-		# flip 2 right bit of first octet
-		hmac[0] = hmac[0] ^ 2
-		# flip back to hex and glue back together
-		hmac = map(lambda x: '%0.2x' % x, hmac)
-		hmac = map(lambda x: re.sub(r'^0+', '', hmac[x] + hmac[x+1]), [0, 2, 4, 6])
-		return 'fe80::' + ':'.join(hmac)
 
 	def updatePrefixes(self):
 		try:
