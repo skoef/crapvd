@@ -32,8 +32,8 @@ class CRApvD:
 		self.updatePrefixes()
 
 	def run(self):
-		self.logger.info('starting sniffing')
-		sniff('icmp6', prn=self.sniffHandler, stop_filter=self.keepSniffing, store=0)
+		self.logger.info('starting sniffing on %s' % self.config['interface'])
+		sniff('icmp6', iface=self.config['interface'], prn=self.sniffHandler, stop_filter=self.keepSniffing, store=0)
 		self.logger.info('stopped sniffing')
 
 	def keepSniffing(self, x):
@@ -68,6 +68,9 @@ class CRApvD:
 		self.checkToSend()
 
 	def checkToSend(self):
+		# when running in automatic mode, don't do anything unless router info has been found
+		if self.config['automatic'] is True and self.routerFound is False:
+			return
 		timeout = (time.time() - self.config['interval'])
 		for customer in self.prefixes:
 			data = self.prefixes[customer]
@@ -170,11 +173,12 @@ def daemonize (stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
 	os.dup2(se.fileno(), sys.stderr.fileno())
 
 def usage():
-	print """Usage: %s -s srcll -m srcmac [-i interval] [-c prefixesfile] [-l logfile] [-f] [-d] [-a] [-h]
+	print """Usage: %s -i interface -s srcll -m srcmac [-t interval] [-c prefixesfile] [-l logfile] [-f] [-d] [-a] [-h]
 
+	-i interface   : interface to send advertisements on          [required]
 	-s ip6address  : link-local address for real gateway          [required]
 	-m macaddress  : mac-address of link-local address            [required]
-	-i seconds     : approximate interval advertisements are sent [default=60]
+	-t seconds     : approximate interval advertisements are sent [default=60]
 	-c file        : YAML file containing prefixes                [default=/etc/prefixes.yaml]
 	-l file        : log file                                     [default=/var/log/crapvd.log]
 	-f             : don't detach from foreground
