@@ -24,11 +24,11 @@ customer1:
 ```
 we can start ```carpvd``` with link-local address and MAC address from the router:
 ```
-$ carpvd -m 00:01:02:03:05:05 -s fe80:f000:1 -c /path/to/prefixes.yaml
+$ carpvd -i eth0 -m 00:01:02:03:05:05 -s fe80:f000:1 -c /path/to/prefixes.yaml
 ```
 or let ```crapvd``` detect the default route from the advertisements from the router:
 ```
-$ crapvd -a -c /path/to/prefixes.yaml
+$ crapvd -i eth0 -a -c /path/to/prefixes.yaml
 ```
 
 ## Dependencies
