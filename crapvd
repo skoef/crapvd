@@ -84,7 +84,7 @@ class CRApvD:
 	def sendRA(self, macaddr, prefix):
 		self.logger.info('sending prefix %s to address %s' % (prefix, macaddr))
 		# ethernet frame
-		ether = Ether(src=self.config['srcmac'], dst=macaddr)
+		ether = Ether(dst=macaddr)
 		# IPv6 packet
 		# in which we forge the source link local address
 		ip6 = IPv6(src=self.config['srcll'])
