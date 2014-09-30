@@ -6,6 +6,7 @@ import time
 import logging
 import os
 import getopt
+import random
 
 class CRApvD:
 	def __init__(self, config):
@@ -100,7 +101,8 @@ class CRApvD:
 			# glue parts together and send it
 			if sendp(ether/ip6/ra/src/preinf, iface=self.config['interface']) is None:
 				self.logger.debug('sent successful, resetting timer for %s' % macaddr)
-				self.timers[macaddr] = time.time()
+				# reset timeout for macaddr, and apply some jitter
+				self.timers[macaddr] = time.time() + random.randint(0, 10)
 		except socket.error, e:
 			self.logger.error('error sending RA: %s' % str(e))
 			self.keepRunning = False
