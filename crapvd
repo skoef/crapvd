@@ -97,9 +97,15 @@ class CRApvD:
 		preinf = ICMPv6NDOptPrefixInfo(validlifetime=2592000, preferredlifetime=604800)
 		preinf.prefix = prefix.split('/')[0]
 		preinf.prefixlen = int(prefix.split('/')[1])
+		# set RDNSS
+		if 'rdnss' in self.config:
+			dns = ICMPv6NDOptRDNSS(dns=['2a01:7c8:a::c53', '2a01:7c8:b::c53'])
+			packet = (ether/ip6/ra/src/dns/preinf)
+		else:
+			packet = (ether/ip6/ra/src/preinf)
 		try:
 			# glue parts together and send it
-			if sendp(ether/ip6/ra/src/preinf, iface=self.config['interface']) is None:
+			if sendp(packet, iface=self.config['interface']) is None:
 				self.logger.debug('sent successful, resetting timer for %s' % macaddr)
 				# reset timeout for macaddr, and apply some jitter
 				self.timers[macaddr] = time.time() + random.randint(0, 10)
@@ -177,12 +183,13 @@ def daemonize (stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
 def usage():
 	print """Usage: %s -i interface -s srcll -m srcmac [-t interval] [-c prefixesfile] [-l logfile] [-f] [-d] [-a] [-h]
 
-	-i interface   : interface to send advertisements on          [required]
-	-s ip6address  : link-local address for real gateway          [required]
-	-m macaddress  : mac-address of link-local address            [required]
-	-t seconds     : approximate interval advertisements are sent [default=60]
-	-c file        : YAML file containing prefixes                [default=/etc/prefixes.yaml]
-	-l file        : log file                                     [default=/var/log/crapvd.log]
+	-i interface   : interface to send advertisements on           [required]
+	-s ip6address  : link-local address for real gateway           [required]
+	-m macaddress  : mac-address of link-local address             [required]
+	-r dnsserver   : comma-separated list of recursive dns servers [default=None]
+	-t seconds     : approximate interval advertisements are sent  [default=60]
+	-c file        : YAML file containing prefixes                 [default=/etc/prefixes.yaml]
+	-l file        : log file                                      [default=/var/log/crapvd.log]
 	-f             : don't detach from foreground
 	-d             : show debugging messages
 	-a             : crapvd will listen for RA from the real router
@@ -203,7 +210,7 @@ if __name__ == '__main__':
 
 	# parse options
 	try:
-		opts, args = getopt.getopt(sys.argv[1:], 'i:s:m:t:c:l:fdah', [])
+		opts, args = getopt.getopt(sys.argv[1:], 'i:s:m:r:t:c:l:fdah', [])
 	except getopt.GetoptError, e:
 		print str(e)
 		sys.exit(2)
@@ -215,6 +222,8 @@ if __name__ == '__main__':
 			config['srcll'] = a
 		elif o == '-m':
 			config['srcmac'] = a
+		elif o == '-r':
+			config['rdnss'] = a
 		elif o == '-t':
 			config['interval'] = int(a)
 		elif o == '-c':
@@ -245,6 +254,14 @@ if __name__ == '__main__':
 		print "Error: either -a or -s and -m are required"
 		usage()
 		sys.exit(2)
+
+	# check rdnss
+	if 'rdnss' in config:
+		if len(config['rdnss'].split(',')) is 0:
+			print "Warning: invalid dnsservers given, skipping"
+			config.pop('rdnss', None)
+		else:
+			config['rdnss'] = config['rdnss'].split(',')
 
 	# detach from foreground
 	if config['foreground'] is False:
