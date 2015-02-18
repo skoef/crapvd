@@ -99,7 +99,7 @@ class CRApvD:
 		preinf.prefixlen = int(prefix.split('/')[1])
 		# set RDNSS
 		if 'rdnss' in self.config:
-			dns = ICMPv6NDOptRDNSS(dns=['2a01:7c8:a::c53', '2a01:7c8:b::c53'])
+			dns = ICMPv6NDOptRDNSS(dns=self.config['rdnss'])
 			packet = (ether/ip6/ra/src/dns/preinf)
 		else:
 			packet = (ether/ip6/ra/src/preinf)
