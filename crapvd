@@ -43,7 +43,7 @@ class CRApvD:
 	def sniffHandler(self, packet):
 		# router sollicitation
 		if ICMPv6ND_RS in packet:
-			# RFC4861 specifies that in an RS
+			# RFC4861 specifies that an RS
 			# should include an option with the link layer
 			# address when the address is not
 			# 'the unspecified address'. In the latter
