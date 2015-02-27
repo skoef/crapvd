@@ -43,7 +43,17 @@ class CRApvD:
 	def sniffHandler(self, packet):
 		# router sollicitation
 		if ICMPv6ND_RS in packet:
-			rs_src = packet[IPv6][ICMPv6ND_RS].lladdr
+			# RFC4861 specifies that in an RS
+			# should include an option with the link layer
+			# address when the address is not
+			# 'the unspecified address'. In the latter
+			# case, just use the IPv6 header source
+			# address
+			try:
+				rs_src = packet[IPv6][ICMPv6ND_RS].lladdr
+			except AttributeError:
+				rs_src = packet[IPv6].src
+
 			self.logger.info('received RS from %s', rs_src)
 			# when running in automatic mode, wait for router config being detected
 			# prior to responding to router solicitments
