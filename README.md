@@ -1,6 +1,6 @@
 # Custom Router APVertisment Daemon
 
-Send custom, directed IPv6 router advertisments on any network.
+Send custom, directed IPv6 router advertisements on any network.
 
 ## Background
 At my current employer, we run a lot of customer virtual machines in shared VLANs.
@@ -11,7 +11,7 @@ we came up with:
 
 - generate lists of mac address and prefix combinations per customer
 - listen for router solicitation from any of these link-local addresses
-- reply with a matching router advertisments, forging the given link-local address and MAC
+- reply with a matching router advertisements, forging the given link-local address and MAC
 address of the router itself
 - send periodic router advertisements anyhow, with or without router solicitation
 
