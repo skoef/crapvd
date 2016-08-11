@@ -7,6 +7,7 @@ import logging
 import os
 import getopt
 import random
+import ConfigParser
 
 class CRApvD:
 	def __init__(self, config):
@@ -34,7 +35,7 @@ class CRApvD:
 
 	def run(self):
 		self.logger.info('starting sniffing on %s' % self.config['interface'])
-		sniff('icmp6', iface=self.config['interface'], prn=self.sniffHandler, stop_filter=self.keepSniffing, store=0)
+		sniff(filter='icmp6', iface=self.config['interface'], prn=self.sniffHandler, stop_filter=self.keepSniffing, store=0)
 		self.logger.info('stopped sniffing')
 
 	def keepSniffing(self, x):
@@ -68,9 +69,9 @@ class CRApvD:
 		# and start replying to received router solicitments from now on
 		if ICMPv6ND_RA in packet and self.config['automatic'] is True and self.routerFound is False:
 			self.routerFound = True
-			self.config['srcll'] = packet[IPv6].src
-			self.config['srcmac'] = packet[IPv6][ICMPv6ND_RA].lladdr
-			self.logger.info('found RA from %s for %s, from now replying on RS' % (self.config['srcmac'], self.config['srcll']))
+			self.config['linklocal'] = packet[IPv6].src
+			self.config['macaddress'] = packet[IPv6][ICMPv6ND_RA].lladdr
+			self.logger.info('found RA from %s for %s, from now replying on RS' % (self.config['macaddress'], self.config['linklocal']))
 
 		# update prefixes list
 		self.updatePrefixes()
@@ -102,11 +103,11 @@ class CRApvD:
 		ether = Ether(dst=macaddr)
 		# IPv6 packet
 		# in which we forge the source link local address
-		ip6 = IPv6(src=self.config['srcll'])
+		ip6 = IPv6(src=self.config['linklocal'])
 		# make packet an RA
 		ra = ICMPv6ND_RA(chlim=64, routerlifetime=(self.config['interval'] * 3), prf=0)
 		# forge source mac address
-		src = ICMPv6NDOptSrcLLAddr(lladdr=self.config['srcmac'])
+		src = ICMPv6NDOptSrcLLAddr(lladdr=self.config['macaddress'])
 		# set right prefix data
 		preinf = ICMPv6NDOptPrefixInfo(validlifetime=2592000, preferredlifetime=604800)
 		preinf.prefix = prefix.split('/')[0]
@@ -195,61 +196,41 @@ def daemonize (stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
 	os.dup2(se.fileno(), sys.stderr.fileno())
 
 def usage():
-	print """Usage: %s -i interface -s srcll -m srcmac [-t interval] [-c prefixesfile] [-l logfile] [-f] [-d] [-a] [-h]
+	print """Usage: %s [-c configfile] [-f] [-d] [-h]
 
-	-i interface   : interface to send advertisements on           [required]
-	-s ip6address  : link-local address for real gateway           [required]
-	-m macaddress  : mac-address of link-local address             [required]
-	-r dnsserver   : comma-separated list of recursive dns servers [default=None]
-	-t seconds     : approximate interval advertisements are sent  [default=60]
-	-c file        : YAML file containing prefixes                 [default=/etc/prefixes.yaml]
-	-l file        : log file                                      [default=/var/log/crapvd.log]
-	-f             : don't detach from foreground
-	-d             : show debugging messages
-	-a             : crapvd will listen for RA from the real router
-	                 both -m and -s will be ignored
-	-h             : show this help message
+	-c file : config file                   [default=/etc/crapvd.conf]
+	-f      : don't detach from foreground
+	-d      : show debugging messages
+	-h      : show this help message
 	""" % os.path.basename(sys.argv[0])
 
 if __name__ == '__main__':
 	# defaults
 	config = {
-		'interval': 60,
+		'automatic': True,
+		'foreground': False,
+		'debugging': False,
 		'logfile': '/var/log/crapvd.log',
 		'prefixfile': '/etc/prefixes.yaml',
-		'automatic': False,
-		'foreground': False,
-		'debugging': False
+		'interval': 60,
 	}
+
+	configFile = '/etc/crapvd.conf'
 
 	# parse options
 	try:
-		opts, args = getopt.getopt(sys.argv[1:], 'i:s:m:r:t:c:l:fdah', [])
+		opts, args = getopt.getopt(sys.argv[1:], 'c:fdh', [])
 	except getopt.GetoptError, e:
 		print str(e)
 		sys.exit(2)
 
 	for o, a in opts:
-		if o == '-i':
-			config['interface'] = a
-		elif o == '-s':
-			config['srcll'] = a
-		elif o == '-m':
-			config['srcmac'] = a
-		elif o == '-r':
-			config['rdnss'] = a
-		elif o == '-t':
-			config['interval'] = int(a)
-		elif o == '-c':
-			config['prefixfile'] = a
-		elif o == '-l':
-			config['logfile'] = a
+		if o == '-c':
+			configFile = a
 		elif o == '-f':
 			config['foreground'] = True
 		elif o == '-d':
 			config['debugging'] = True
-		elif o == '-a':
-			config['automatic'] = True
 		elif o == '-h':
 			usage()
 			sys.exit(0)
@@ -258,21 +239,53 @@ if __name__ == '__main__':
 			usage()
 			sys.exit(2)
 
+	# parse config file
+	if not os.path.isfile(configFile):
+		print "Error: could not find config file %s" % configFile
+		sys.exit(2)
+
+	# get config from file
+	configParser = ConfigParser.SafeConfigParser()
+	try:
+		configParser.read(configFile)
+	except ConfigParser.ParsingError, e:
+		print e
+		sys.exit(2)
+
+	# global options
+	for option in ['logfile', 'interface']:
+		try:
+			config[option] = configParser.get('global', option)
+		except ConfigParser.NoOptionError:
+			pass
+
+	# ipv6 options
+	for option in ['linklocal', 'macaddress', 'prefixfile', 'interval', 'rdnss', 'automatic']:
+		try:
+			if option == 'interval':
+				config[option] = configParser.getint('ipv6', option)
+			elif option == 'automatic':
+				config[option] = configParser.getboolean('ipv6', option)
+			else:
+				config[option] = configParser.get('ipv6', option)
+		except ConfigParser.NoOptionError:
+			pass
+
 	# check for required parameters
 	if 'interface' not in config:
-		print "Error: -i is required"
+		print "Error: no interface in global section"
 		usage()
 		sys.exit(2)
 
-	if ('srcmac' not in config or 'srcll' not in config) and config['automatic'] is False:
-		print "Error: either -a or -s and -m are required"
+	if ('macaddress' not in config or 'linklocal' not in config) and config['automatic'] is False:
+		print "Error: either enable automatic mode or define macaddress and linklocal in ipv6 section"
 		usage()
 		sys.exit(2)
 
 	# check rdnss
 	if 'rdnss' in config:
 		if len(config['rdnss'].split(',')) is 0:
-			print "Warning: invalid dnsservers given, skipping"
+			print "Warning: invalid IPv6 dnsservers given, skipping"
 			config.pop('rdnss', None)
 		else:
 			config['rdnss'] = config['rdnss'].split(',')

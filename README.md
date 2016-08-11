@@ -22,14 +22,8 @@ customer1:
   macaddr: '01:23:45:67:89:ab'
   prefix:  '2a01:f000:f000:f000::/64'
 ```
-we can start ```crapvd``` with link-local address and MAC address from the router:
-```
-$ crapvd -i eth0 -m 00:01:02:03:05:05 -s fe80::f000:1 -c /path/to/prefixes.yaml
-```
-or let ```crapvd``` detect the default route from the advertisements from the router:
-```
-$ crapvd -i eth0 -a -c /path/to/prefixes.yaml
-```
+
+By default, `crapvd` will listen to router advertisements from the actual router and then uses the IPv6 link-local and MAC address found in there to send more specific router advertisements to each client. For information how to override these, and other available settings, refer to the example config file.
 
 ## Dependencies
 ```crapvd``` depends on [scapy](http://www.secdev.org/projects/scapy/ "Scapy") and [pyyaml](http://pyyaml.org/ "PyYAML")

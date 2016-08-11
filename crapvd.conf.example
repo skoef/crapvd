@@ -1,0 +1,35 @@
+# Custom Router APVertisement Daemon configuration file
+
+[global]
+### interface to listen on for router solicitations
+### required
+interface = eth0
+
+### file to log events to
+# logfile = /var/log/crapvd.log
+
+[ipv6]
+### in automatic mode, crapvd listens for router advertisements from the real router
+### and uses the MAC address and IPv6 link-local from the router to send more specific prefixes
+### to individual clients
+### if automatic mode is disabled, linklocal and macaddress must be defined statically
+# automatic = True
+
+### define IPv6 link-local address in router advertisements
+### required if not running in automatic mode
+# linklocal = fe80::1
+
+### define MAC address in router advertisements
+### required if not running in automatic mode
+# macaddress =  12:34:56:78:9a:bc
+
+### interval in which crapvd sends router advertisements
+### some jitter is applied to spread multiple advertisments
+# interval = 60
+
+### YAML file containing MAC address and prefix pairs, per client
+# prefixfile = /etc/prefixes.yaml
+
+### when set, include Recursive DNS servers (RFC6106) option in router advertisments
+### comma-seperated list of IPv6 addresses of recursive nameservers to use
+# rdnss =
