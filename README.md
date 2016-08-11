@@ -10,10 +10,10 @@ but resist to the fact of configuring gateways or next-hops for each /64. So thi
 we came up with:
 
 - generate lists of mac address and prefix combinations per customer
-- listen for router solicitments from any of these link-local addresses
+- listen for router solicitation from any of these link-local addresses
 - reply with a matching router advertisments, forging the given link-local address and MAC
 address of the router itself
-- send periodic router advertisements anyhow, with or without router solicitments
+- send periodic router advertisements anyhow, with or without router solicitation
 
 ## Usage
 Given the following YAML based config file:
