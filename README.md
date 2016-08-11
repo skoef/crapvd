@@ -23,6 +23,8 @@ customer1:
   prefix:  '2a01:f000:f000:f000::/64'
 ```
 
+`crapvd` will periodically send router advertisements to customer1 for prefix `2a01:f000:f000:f000::/64`, as well as respond to router solicitations from `01:23:45:67:89:ab`.
+
 By default, `crapvd` will listen to router advertisements from the actual router and then uses the IPv6 link-local and MAC address found in there to send more specific router advertisements to each client. For information how to override these, and other available settings, refer to the example config file.
 
 ## Dependencies
