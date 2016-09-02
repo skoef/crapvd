@@ -8,6 +8,7 @@ import os
 import getopt
 import random
 import ConfigParser
+import threading
 
 class CRApvD:
 	def __init__(self, config):
@@ -34,9 +35,12 @@ class CRApvD:
 		self.updatePrefixes()
 
 	def run(self):
+		# start off timers thread
+		threading.Thread(target=self.timerThread).start()
 		self.logger.info('starting sniffing on %s' % self.config['interface'])
 		sniff(filter='icmp6', iface=self.config['interface'], prn=self.sniffHandler, stop_filter=self.keepSniffing, store=0)
-		self.logger.info('stopped sniffing')
+		self.keepRunning = False
+		self.logger.info('stopped sniffing, waiting for threads to finish...')
 
 	def keepSniffing(self, x):
 		return not self.keepRunning
@@ -75,9 +79,6 @@ class CRApvD:
 
 		# update prefixes list
 		self.updatePrefixes()
-
-		# asynchronously 'schedule' next round of sending directed RA's
-		self.checkToSend()
 
 	def resetTimer(self, macAddr, jitter=10):
 		self.timers[macAddr] = time.time() + random.randint(0, jitter)
@@ -153,6 +154,14 @@ class CRApvD:
 		except OSError, e:
 			self.logger.error('prefixes file %s not found' % self.config['prefixfile'])
 			self.keepRunning = False
+
+	def timerThread(self):
+		# check if advertisements need to be send out
+		# in automatic mode: only as we have detected the router
+		while self.keepRunning:
+			time.sleep(1)
+			if not self.config['automatic'] or self.routerFound:
+				self.checkToSend()
 
 def daemonize (stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
 	# Do first fork.
